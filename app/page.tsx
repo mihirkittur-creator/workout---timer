@@ -6,14 +6,20 @@ const ROUNDS = 6;
 const DEFAULT_EXERCISE = 60;
 const DEFAULT_REST = 30;
 
-function formatTime(seconds : number) {
+interface SequenceItem {
+  type: "exercise" | "rest";
+  round: number;
+  duration: number;
+}
+
+function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function buildSequence(exerciseDur: number, restDur: number) {
-  const seq = [];
+function buildSequence(exerciseDur: number, restDur: number): SequenceItem[] {
+  const seq: SequenceItem[] = [];
   for (let i = 0; i < ROUNDS; i++) {
     seq.push({ type: "exercise", round: i + 1, duration: exerciseDur });
     seq.push({ type: "rest", round: i + 1, duration: restDur });
@@ -22,38 +28,36 @@ function buildSequence(exerciseDur: number, restDur: number) {
 }
 
 export default function WorkoutTimer() {
-  const [exerciseDur, setExerciseDur] = useState(DEFAULT_EXERCISE);
-  const [restDur, setRestDur] = useState(DEFAULT_REST);
-  const [sequence, setSequence] = useState(() => buildSequence(DEFAULT_EXERCISE, DEFAULT_REST));
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(sequence[0].duration);
-  const [running, setRunning] = useState(false);
-  const [done, setDone] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
+  const [exerciseDur, setExerciseDur] = useState<number>(DEFAULT_EXERCISE);
+  const [restDur, setRestDur] = useState<number>(DEFAULT_REST);
+  const [sequence, setSequence] = useState<SequenceItem[]>(() => buildSequence(DEFAULT_EXERCISE, DEFAULT_REST));
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [timeLeft, setTimeLeft] = useState<number>(sequence[0].duration);
+  const [running, setRunning] = useState<boolean>(false);
+  const [done, setDone] = useState<boolean>(false);
+  const [elapsed, setElapsed] = useState<number>(0);
 
-  const intervalRef = useRef(null);
-  const elapsedRef = useRef(null);
-  // Persistent AudioContext — created once on first user interaction
-  const audioCtxRef = useRef(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const current = sequence[currentIndex];
   const isExercise = current?.type === "exercise";
 
-  // Initialize or resume AudioContext — MUST be called inside a user gesture
-  function ensureAudio() {
+  function ensureAudio(): void {
     if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      audioCtxRef.current = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!)();
     }
     if (audioCtxRef.current.state === "suspended") {
       audioCtxRef.current.resume();
     }
   }
 
-  function playBeep(type: string = "switch") {
+  function playBeep(type: string = "switch"): void {
     try {
       const ctx = audioCtxRef.current;
       if (!ctx || ctx.state === "suspended") return;
-      const configs = {
+      const configs: Record<string, { freq: number; dur: number }[]> = {
         switch:    [{ freq: 880, dur: 0.15 }, { freq: 1320, dur: 0.15 }],
         done:      [{ freq: 523, dur: 0.18 }, { freq: 659, dur: 0.18 }, { freq: 784, dur: 0.35 }],
         countdown: [{ freq: 440, dur: 0.10 }],
@@ -78,17 +82,17 @@ export default function WorkoutTimer() {
     }
   }
 
-  // Elapsed counter
   useEffect(() => {
     if (running && !done) {
       elapsedRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
     } else {
-      clearInterval(elapsedRef.current);
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
     }
-    return () => clearInterval(elapsedRef.current);
+    return () => {
+      if (elapsedRef.current) clearInterval(elapsedRef.current);
+    };
   }, [running, done]);
 
-  // Main countdown
   useEffect(() => {
     if (running && !done) {
       intervalRef.current = setInterval(() => {
@@ -113,19 +117,20 @@ export default function WorkoutTimer() {
         });
       }, 1000);
     }
-    return () => clearInterval(intervalRef.current);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [running, done, sequence]);
 
-  function handleStart() {
+  function handleStart(): void {
     if (done) return;
-    // ensureAudio MUST be called directly inside this click handler to satisfy browser policy
     ensureAudio();
     setRunning((r) => !r);
   }
 
-  function handleReset() {
-    clearInterval(intervalRef.current);
-    clearInterval(elapsedRef.current);
+  function handleReset(): void {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (elapsedRef.current) clearInterval(elapsedRef.current);
     const seq = buildSequence(exerciseDur, restDur);
     setSequence(seq);
     setCurrentIndex(0);
@@ -135,11 +140,7 @@ export default function WorkoutTimer() {
     setElapsed(0);
   }
 
-  function applySettings() {
-    handleReset();
-  }
-
-  const progress = done ? 1 : (1 - timeLeft / current.duration);
+  const progress = done ? 1 : 1 - timeLeft / current.duration;
   const circumference = 2 * Math.PI * 88;
   const dashOffset = circumference * (1 - progress);
 
@@ -148,9 +149,9 @@ export default function WorkoutTimer() {
     const restIdx = i * 2 + 1;
     return {
       i,
-      exDone:    currentIndex > exIdx || done,
-      restDone:  currentIndex > restIdx || done,
-      exActive:  currentIndex === exIdx && !done,
+      exDone:     currentIndex > exIdx || done,
+      restDone:   currentIndex > restIdx || done,
+      exActive:   currentIndex === exIdx && !done,
       restActive: currentIndex === restIdx && !done,
     };
   });
@@ -196,12 +197,10 @@ export default function WorkoutTimer() {
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
       `}</style>
 
-      {/* Title */}
       <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 13, letterSpacing: 6, color: "#555", marginBottom: 8 }}>
         WORKOUT TIMER
       </div>
 
-      {/* Main timer ring */}
       <div style={{ position: "relative", width: 220, height: 220, marginBottom: 24 }}>
         <svg width="220" height="220" style={{ transform: "rotate(-90deg)" }}>
           <circle cx="110" cy="110" r="88" fill="none" stroke="#1a1a2e" strokeWidth="10" />
@@ -250,7 +249,6 @@ export default function WorkoutTimer() {
         </div>
       </div>
 
-      {/* Controls */}
       <div style={{ display: "flex", gap: 12, marginBottom: 32 }}>
         <button className="btn" onClick={handleStart} style={{
           background: running ? "#1a1a2e" : isExercise ? "#f6d860" : "#60a5fa",
@@ -274,7 +272,6 @@ export default function WorkoutTimer() {
         </button>
       </div>
 
-      {/* Round indicators */}
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
         {rounds.map(({ i, exDone, restDone, exActive, restActive }) => (
           <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
@@ -295,13 +292,11 @@ export default function WorkoutTimer() {
         ))}
       </div>
 
-      {/* Legend */}
       <div style={{ display: "flex", gap: 16, marginBottom: 20, fontSize: 10, letterSpacing: 2, color: "#555", fontFamily: "'IBM Plex Mono', monospace" }}>
         <span style={{ color: "#f6d86088" }}>● EXERCISE</span>
         <span style={{ color: "#60a5fa88" }}>● REST</span>
       </div>
 
-      {/* Elapsed Time */}
       <div style={{
         background: "#111",
         border: "1px solid #1e1e2e",
@@ -313,17 +308,11 @@ export default function WorkoutTimer() {
         gap: 12,
       }}>
         <span style={{ fontSize: 9, letterSpacing: 4, color: "#444", fontFamily: "'IBM Plex Mono', monospace" }}>ELAPSED</span>
-        <span style={{
-          fontFamily: "'Bebas Neue', sans-serif",
-          fontSize: 28,
-          color: "#4ade8099",
-          letterSpacing: 2,
-        }}>
+        <span style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, color: "#4ade8099", letterSpacing: 2 }}>
           {formatTime(elapsed)}
         </span>
       </div>
 
-      {/* Settings */}
       <div style={{
         background: "#111",
         border: "1px solid #222",
@@ -349,7 +338,7 @@ export default function WorkoutTimer() {
               onChange={(e) => setRestDur(Number(e.target.value))} />
           </div>
         </div>
-        <button className="btn" onClick={applySettings} style={{
+        <button className="btn" onClick={handleReset} style={{
           background: "#1a1a2e",
           color: "#888",
           fontSize: 14,
