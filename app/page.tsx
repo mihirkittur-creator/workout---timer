@@ -6,13 +6,13 @@ const ROUNDS = 6;
 const DEFAULT_EXERCISE = 60;
 const DEFAULT_REST = 30;
 
-function formatTime(seconds) {
+function formatTime(seconds : number) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function buildSequence(exerciseDur, restDur) {
+function buildSequence(exerciseDur: number, restDur: number) {
   const seq = [];
   for (let i = 0; i < ROUNDS; i++) {
     seq.push({ type: "exercise", round: i + 1, duration: exerciseDur });
@@ -49,7 +49,7 @@ export default function WorkoutTimer() {
     }
   }
 
-  function playBeep(type = "switch") {
+  function playBeep(type: string = "switch") {
     try {
       const ctx = audioCtxRef.current;
       if (!ctx || ctx.state === "suspended") return;
